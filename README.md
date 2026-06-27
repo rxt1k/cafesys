@@ -1,3 +1,8 @@
+<img width="960" height="475" alt="image" src="https://github.com/user-attachments/assets/1ec506bf-2bc2-487e-961c-e9adeeabd1a1" />
+
+
+
+
 # ☕ CafeSys — Premium Cafe QR Ordering System
 
 A production-grade QR-based ordering system for cafes and restaurants. Customers scan a QR code on their table, browse the menu, place orders, and track status in real-time. Cafe admins manage dishes, tables, orders, billing, and analytics from a premium dashboard.
