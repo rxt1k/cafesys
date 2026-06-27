@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ChevronDown, ChevronUp, Printer, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Printer, CheckCircle, XCircle, RefreshCw, X, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Order, OrderStatus, PaymentMethod } from '@/lib/types';
 import { formatCurrency, formatDateTime, getOrderStatusColor, getOrderStatusLabel, getPaymentStatusColor, cn } from '@/lib/utils';
@@ -26,6 +26,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [billOrder, setBillOrder] = useState<Order | null>(null);
@@ -42,15 +43,22 @@ export default function OrdersPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchOrders)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [dateFilter]);
 
   async function fetchOrders() {
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
       .select('*, order_items(*, order_item_extras(*)), table:tables(table_number, table_name)')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(200);
 
+    if (dateFilter === 'today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      query = query.gte('created_at', today.toISOString());
+    }
+
+    const { data, error } = await query;
     if (!error && data) setOrders(data as Order[]);
     setLoading(false);
   }
@@ -160,8 +168,27 @@ export default function OrdersPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-2xl font-semibold text-primary">Orders</h1>
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-primary">Orders</h1>
+          <p className="text-secondary text-xs mt-0.5">{orders.length} order{orders.length !== 1 ? 's' : ''} found</p>
+        </div>
         <div className="flex items-center gap-2">
+          {/* Date filter */}
+          <div className="flex gap-1 bg-stone-100 dark:bg-stone-800 p-1 rounded-xl">
+            {(['today', 'all'] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDateFilter(d)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize',
+                  dateFilter === d ? 'bg-white dark:bg-stone-700 text-primary shadow-sm' : 'text-secondary hover:text-primary'
+                )}
+              >
+                <Calendar className="w-3 h-3" />
+                {d === 'today' ? 'Today' : 'All Time'}
+              </button>
+            ))}
+          </div>
           {selectedOrders.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-secondary">{selectedOrders.length} selected</span>

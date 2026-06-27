@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Download, RefreshCw, QrCode, AlertTriangle, Users } from 'lucide-react';
+import { Plus, Download, RefreshCw, QrCode, AlertTriangle, Users, Trash2, Edit2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Table } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -17,8 +17,10 @@ export default function TablesPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState<Table | null>(null);
+  const [editingTable, setEditingTable] = useState<Table | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [resettingTable, setResettingTable] = useState<string | null>(null);
+  const [deletingTable, setDeletingTable] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTables();
@@ -86,6 +88,61 @@ export default function TablesPage() {
       toast.error('Failed to reset table');
     } finally {
       setResettingTable(null);
+    }
+  }
+
+  async function deleteTable(tableId: string, tableNumber: number) {
+    if (
+      !confirm(
+        `Are you sure you want to delete Table ${tableNumber}? This will clear table and session references from orders and delete all associated sessions.`
+      )
+    ) {
+      return;
+    }
+    setDeletingTable(tableId);
+    try {
+      // 1. Get all session IDs for this table
+      const { data: sessions } = await supabase
+        .from('table_sessions')
+        .select('id')
+        .eq('table_id', tableId);
+
+      const sessionIds = sessions?.map((s) => s.id) || [];
+
+      // 2. Clear foreign key references in orders to avoid constraint blocking
+      if (sessionIds.length > 0) {
+        await supabase
+          .from('orders')
+          .update({ table_id: null, session_id: null })
+          .in('session_id', sessionIds);
+      }
+
+      await supabase
+        .from('orders')
+        .update({ table_id: null })
+        .eq('table_id', tableId);
+
+      // 3. Delete the table sessions
+      await supabase
+        .from('table_sessions')
+        .delete()
+        .eq('table_id', tableId);
+
+      // 4. Delete the table itself
+      const { error } = await supabase
+        .from('tables')
+        .delete()
+        .eq('id', tableId);
+
+      if (error) throw error;
+
+      toast.success(`Table ${tableNumber} deleted successfully`);
+      fetchTables();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete table');
+    } finally {
+      setDeletingTable(null);
     }
   }
 
@@ -182,16 +239,31 @@ export default function TablesPage() {
                   <Download className="w-3 h-3" />
                   Download
                 </button>
+                <button
+                  onClick={() => setEditingTable(table)}
+                  className="w-full py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  Edit Table
+                </button>
                 {table.status === 'occupied' && (
                   <button
                     onClick={() => resetTable(table.id)}
                     disabled={resettingTable === table.id}
-                    className="w-full py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-xs font-medium text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full py-1.5 rounded-lg bg-orange-50 dark:bg-orange-900/20 text-xs font-medium text-orange-600 hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors flex items-center justify-center gap-1.5"
                   >
                     <RefreshCw className={cn('w-3 h-3', resettingTable === table.id && 'animate-spin')} />
                     Reset Table
                   </button>
                 )}
+                <button
+                  onClick={() => deleteTable(table.id, table.table_number)}
+                  disabled={deletingTable === table.id}
+                  className="w-full py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-xs font-medium text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className={cn('w-3 h-3', deletingTable === table.id && 'animate-spin')} />
+                  {deletingTable === table.id ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
             </motion.div>
           ))}
@@ -229,6 +301,17 @@ export default function TablesPage() {
               </p>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* Edit Table Modal */}
+      <Modal isOpen={!!editingTable} onClose={() => setEditingTable(null)} title="Edit Table" size="sm">
+        {editingTable && (
+          <EditTableForm
+            table={editingTable}
+            onSave={() => { setEditingTable(null); fetchTables(); }}
+            onClose={() => setEditingTable(null)}
+          />
         )}
       </Modal>
 
@@ -307,6 +390,96 @@ function AddTableForm({
       </div>
       <div className="flex gap-3">
         <Button fullWidth loading={saving} onClick={handleSave}>Add Table</Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function EditTableForm({
+  table,
+  onSave,
+  onClose,
+}: {
+  table: Table;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [tableName, setTableName] = useState(table.table_name || '');
+  const [capacity, setCapacity] = useState(table.capacity.toString());
+  const [location, setLocation] = useState(table.location || '');
+  const [isActive, setIsActive] = useState(table.is_active);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('tables')
+        .update({
+          table_name: tableName || null,
+          capacity: parseInt(capacity) || 4,
+          location: location || null,
+          is_active: isActive,
+        })
+        .eq('id', table.id);
+
+      if (error) throw error;
+      toast.success(`Table ${table.table_number} updated`);
+      onSave();
+    } catch {
+      toast.error('Failed to update table');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3 text-center">
+        <p className="text-2xl font-bold font-display text-primary">Table {table.table_number}</p>
+        <p className="text-xs text-secondary mt-0.5 capitalize">{table.status}</p>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-primary mb-1">Table Name</label>
+          <input
+            value={tableName}
+            onChange={(e) => setTableName(e.target.value)}
+            placeholder="e.g., Window Table, Corner Table"
+            className="input-base"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-primary mb-1">Capacity</label>
+          <input
+            type="number"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+            className="input-base"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-primary mb-1">Location</label>
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g., Indoor, Outdoor, Terrace"
+            className="input-base"
+          />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="w-4 h-4 rounded accent-amber-600"
+          />
+          <span className="text-sm text-primary">Table is active (visible to customers)</span>
+        </label>
+      </div>
+      <div className="flex gap-3">
+        <Button fullWidth loading={saving} onClick={handleSave}>Save Changes</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
     </div>

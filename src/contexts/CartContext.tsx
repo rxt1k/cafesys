@@ -171,7 +171,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const subtotal = state.items.reduce((sum, item) => {
     const extrasTotal = item.selectedExtras.reduce((eSum, e) => eSum + e.price, 0);
-    return sum + (item.dish.discounted_price ?? item.dish.price + extrasTotal) * item.quantity;
+    return sum + ((item.dish.discounted_price ?? item.dish.price) + extrasTotal) * item.quantity;
   }, 0);
 
   const tax = subtotal * 0.05;

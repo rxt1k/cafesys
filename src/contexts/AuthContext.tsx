@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function fetchAdmin(userId: string) {
+  async function fetchAdmin(userId: string, retries = 3) {
     try {
       const { data, error } = await supabase
         .from('admins')
@@ -56,25 +56,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error || !data) {
+        if (retries > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          await fetchAdmin(userId, retries - 1);
+          return;
+        }
         setAdmin(null);
+        setLoading(false);
       } else {
         setAdmin(data);
-        // Update last login
-        await supabase
+        setLoading(false);
+        // Update last login (non-blocking)
+        supabase
           .from('admins')
           .update({ last_login_at: new Date().toISOString() })
-          .eq('id', userId);
+          .eq('id', userId)
+          .then();
       }
     } catch {
+      if (retries > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await fetchAdmin(userId, retries - 1);
+        return;
+      }
       setAdmin(null);
-    } finally {
       setLoading(false);
     }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return { error };
+    }
+
+    // Wait for fetchAdmin to succeed and verify they are indeed an admin
+    let adminRecord = null;
+    for (let i = 0; i < 3; i++) {
+      const { data: adminData, error: adminErr } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('id', data.user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (!adminErr && adminData) {
+        adminRecord = adminData;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    if (!adminRecord) {
+      await supabase.auth.signOut();
+      return { error: new Error('User is not authorized as an active admin.') };
+    }
+
+    setAdmin(adminRecord);
+    // Update last login (non-blocking)
+    supabase
+      .from('admins')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', data.user.id)
+      .then();
+
+    return { error: null };
   };
 
   const signOut = async () => {

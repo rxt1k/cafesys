@@ -14,8 +14,11 @@ import {
   Coffee,
   Menu,
   X,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { Notification } from '@/lib/types';
 import { formatTime, cn } from '@/lib/utils';
@@ -31,11 +34,13 @@ const navItems = [
 
 export default function AdminLayout() {
   const { admin, signOut } = useAuth();
+  const { isDark, toggleDark } = useTheme();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [newOrderCount, setNewOrderCount] = useState(0);
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   useEffect(() => {
@@ -63,7 +68,7 @@ export default function AdminLayout() {
             oscillator.start(ctx.currentTime);
             oscillator.stop(ctx.currentTime + 0.3);
           } catch {}
-          toast(notif.message, { icon: 'notification' });
+          toast(notif.message, { icon: '🔔' });
         }
       )
       .subscribe();
@@ -75,7 +80,8 @@ export default function AdminLayout() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'orders' },
         () => {
-          toast.success('New order received!');
+          toast.success('New order received! 🍽️');
+          setNewOrderCount((c) => c + 1);
         }
       )
       .subscribe();
@@ -136,6 +142,8 @@ export default function AdminLayout() {
           collapsed={collapsed}
           navItems={navItems}
           admin={admin}
+          newOrderCount={newOrderCount}
+          onOrdersClick={() => setNewOrderCount(0)}
           onCollapse={() => setCollapsed((v) => !v)}
           onSignOut={handleSignOut}
         />
@@ -155,6 +163,8 @@ export default function AdminLayout() {
               collapsed={false}
               navItems={navItems}
               admin={admin}
+              newOrderCount={newOrderCount}
+              onOrdersClick={() => setNewOrderCount(0)}
               onCollapse={() => setMobileOpen(false)}
               onSignOut={handleSignOut}
               isMobile
@@ -175,7 +185,15 @@ export default function AdminLayout() {
           </button>
           <div className="hidden lg:block" />
 
+          {/* Top bar right section */}
           <div className="flex items-center gap-3">
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleDark}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-secondary hover:text-primary hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
+            >
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
             {/* Notifications */}
             <div className="relative">
               <button
@@ -262,6 +280,8 @@ function SidebarContent({
   onCollapse,
   onSignOut,
   isMobile,
+  newOrderCount = 0,
+  onOrdersClick,
 }: {
   collapsed: boolean;
   navItems: { path: string; icon: React.ElementType; label: string }[];
@@ -269,6 +289,8 @@ function SidebarContent({
   onCollapse: () => void;
   onSignOut: () => void;
   isMobile?: boolean;
+  newOrderCount?: number;
+  onOrdersClick?: () => void;
 }) {
   return (
     <>
@@ -307,34 +329,49 @@ function SidebarContent({
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-0.5">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group',
-                isActive
-                  ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
-                  : 'text-secondary hover:text-primary hover:bg-stone-100 dark:hover:bg-stone-700'
-              )
-            }
-          >
-            <item.icon className="w-4.5 h-4.5 flex-shrink-0" />
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="text-sm font-medium whitespace-nowrap overflow-hidden"
-                >
-                  {item.label}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </NavLink>
-        ))}
+        {navItems.map((item) => {
+          const isOrders = item.path === '/admin/orders';
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              onClick={isOrders && onOrdersClick ? onOrdersClick : undefined}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group relative',
+                  isActive
+                    ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                    : 'text-secondary hover:text-primary hover:bg-stone-100 dark:hover:bg-stone-700'
+                )
+              }
+            >
+              <div className="relative flex-shrink-0">
+                <item.icon className="w-4.5 h-4.5" />
+                {isOrders && newOrderCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center font-bold leading-none"
+                  >
+                    {newOrderCount > 9 ? '9+' : newOrderCount}
+                  </motion.span>
+                )}
+              </div>
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.span
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="text-sm font-medium whitespace-nowrap overflow-hidden flex-1"
+                  >
+                    {item.label}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </NavLink>
+          );
+        })}
       </nav>
 
       {/* User & logout */}
