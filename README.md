@@ -64,6 +64,16 @@ Inspired by Apple, Stripe, Linear, Aesop, and Sweetgreen.
 - Node.js 18+
 - Supabase account (free tier works)
 
+
+<img width="1600" height="789" alt="image" src="https://github.com/user-attachments/assets/87bd5ff7-efc8-4d03-bf78-7b036118fe00" />
+
+
+<img width="1600" height="792" alt="image" src="https://github.com/user-attachments/assets/a7620b84-f1a9-4e7c-b9ed-77e1f09df270" />
+
+<img width="1600" height="790" alt="image" src="https://github.com/user-attachments/assets/93312dbd-091c-4759-8ec9-e428920779b3" />
+
+
+
 ### Setup
 
 ```bash
@@ -81,7 +91,7 @@ cp .env.example .env
 npm run dev
 
 
-<img width="1600" height="789" alt="image" src="https://github.com/user-attachments/assets/87bd5ff7-efc8-4d03-bf78-7b036118fe00" />
+
 
 
 
