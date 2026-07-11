@@ -77,9 +77,9 @@ function AppRoutes() {
         <Route path="analytics" element={<AnalyticsPage />} />
       </Route>
 
-      {/* Default routes */}
-      <Route path="/" element={<ValidateTable />} />
-      <Route path="*" element={<Navigate to="/order" replace />} />
+      {/* Default routes - NOW REDIRECTS TO ADMIN */}
+      <Route path="/" element={<Navigate to="/admin/login" replace />} />
+      <Route path="*" element={<Navigate to="/admin/login" replace />} />
     </Routes>
   );
 }
